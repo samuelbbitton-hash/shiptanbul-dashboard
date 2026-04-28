@@ -7,36 +7,32 @@ from supabase import create_client, Client
 # הגדרות עמוד
 st.set_page_config(page_title="Shiptanbul Cloud", page_icon="📦", layout="wide")
 
-# פונקציית שליחה לטלגרם - גרסה חסינה מתקלות
+# פונקציית שליחה לטלגרם - גרסה פשוטה ועמידה
 def send_telegram_msg(message):
     try:
-        # בדיקה אם המפתחות קיימים ב-Secrets
         if "TELEGRAM_TOKEN" in st.secrets and "TELEGRAM_CHAT_ID" in st.secrets:
             token = st.secrets["TELEGRAM_TOKEN"]
             chat_id = str(st.secrets["TELEGRAM_CHAT_ID"])
             url = f"https://api.telegram.org/bot{token}/sendMessage"
             params = {"chat_id": chat_id, "text": message}
-            # ביצוע השליחה ברקע מבלי לעצור את האתר
             requests.get(url, params=params, timeout=5)
     except Exception as e:
-        # הדפסה ללוגים הפנימיים בלבד (לא למשתמש)
-        print(f"Telegram Notification Error: {e}")
+        print(f"Telegram Log: {e}")
 
 # התחברות ל-Supabase
 try:
     url: str = st.secrets["SUPABASE_URL"]
     key: str = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(url, key)
-except Exception as e:
-    st.error("שגיאה בחיבור למסד הנתונים. וודא שה-Secrets מוגדרים.")
+except:
+    st.error("שגיאה בחיבור למסד הנתונים")
     st.stop()
 
-# --- המשך הקוד (סטטוס מחסנים, טיסות וכו') ---
-# (השארתי את הלוגיקה זהה כדי שלא ייווצרו תקלות חדשות)
-
+# פונקציות עזר
 def get_data(table_name):
     return supabase.table(table_name).select("*").execute()
 
+# טעינת הודעה גלובלית
 msg_res = supabase.table("global_msg").select("content").eq("id", 1).execute()
 global_message = msg_res.data[0]['content'] if msg_res.data else "אין הודעה פעילה"
 
@@ -45,6 +41,7 @@ st.title("📦 Shiptanbul Cloud - לוח תפעול")
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 סטטוס מחסנים", "✈️ טיסות ולוגיסטיקה", "💰 ניהול זיכויים", "💬 שאלות ובקשות"])
 
+# --- טאב 1: מחסנים ---
 with tab1:
     st.header("עדכון סטטוס מחסנים")
     with st.expander("📝 ערוך הודעה לכל הנציגים"):
@@ -54,7 +51,7 @@ with tab1:
             send_telegram_msg(f"הודעת הנהלה חדשה: {new_msg}")
             st.success("ההודעה עודכנה!")
             st.rerun()
-    
+
     wh_res = get_data("warehouses")
     if wh_res.data:
         cols = st.columns(4)
@@ -66,11 +63,12 @@ with tab1:
                     n_st = st.selectbox("סטטוס", ["פעיל", "חצי יום", "סגור", "חג מקומי"], key=f"wh_st_{row['id']}")
                     n_up = st.text_input("העלאה", value=row['upload'], key=f"wh_up_{row['id']}")
                     n_con = st.text_input("איחוד", value=row['consolidation'], key=f"wh_con_{row['id']}")
-                    if st.button("עדכן", key=f"wh_btn_{row['id']}"):
+                    if st.button("עדכן מחסן", key=f"wh_btn_{row['id']}"):
                         supabase.table("warehouses").update({"status": n_st, "upload": n_up, "consolidation": n_con}).eq("id", row['id']).execute()
-                        send_telegram_msg(f"עדכון מחסן {row['location']}: {n_st}")
+                        send_telegram_msg(f"עדכון מחסן {row['location']}: {n_st}, העלאה: {n_up}")
                         st.rerun()
 
+# --- טאב 2: טיסות ---
 with tab2:
     st.header("עדכוני טיסות")
     fl_res = get_data("flights")
@@ -82,33 +80,53 @@ with tab2:
                 c1, c2 = st.columns(2)
                 with c1: nr = st.text_input(f"רגילה {row['destination']}", value=row['regular'], key=f"r_{row['id']}")
                 with c2: nl = st.text_input(f"נוזלים {row['destination']}", value=row['liquid'], key=f"l_{row['id']}")
-                if st.button(f"עדכן {row['destination']}", key=f"f_b_{row['id']}"):
+                if st.button(f"עדכן טיסות {row['destination']}", key=f"f_b_{row['id']}"):
                     supabase.table("flights").update({"regular": nr, "liquid": nl}).eq("id", row['id']).execute()
-                    send_telegram_msg(f"עדכון טיסות {row['destination']}")
+                    send_telegram_msg(f"עדכון טיסות ליעד {row['destination']}: רגילה {nr}, נוזלים {nl}")
                     st.rerun()
 
+# --- טאב 3: זיכויים ---
 with tab3:
     st.header("מעקב זיכויים")
     cred_res = supabase.table("credits").select("*").order("id", desc=True).execute()
     with st.expander("➕ העלאת זיכוי חדש"):
         with st.form("c_form"):
-            pn = st.text_input("מספר חבילה")
-            ph = st.text_input("טלפון")
-            rs = st.selectbox("סיבה", ["מחסן יוון", "מחסן אנגליה", "מחסן ארה\"ב", "מחסן דובאי", "אקסלוט", "זיכוי פנימי"])
-            if st.form_submit_button("שלח"):
+            pn, ph = st.text_input("מספר חבילה"), st.text_input("טלפון")
+            rd, rs = st.date_input("תאריך בקשה"), st.selectbox("סיבה", ["מחסן יוון", "מחסן אנגליה", "מחסן ארה\"ב", "מחסן דובאי", "אקסלוט", "זיכוי פנימי"])
+            tr = st.text_input("קישור טרלו")
+            if st.form_submit_button("שלח למערכת"):
                 now = datetime.now().strftime("%d/%m/%Y %H:%M")
-                supabase.table("credits").insert({"package_num": pn, "phone": ph, "reason": rs, "status": "ממתין", "timestamp": now}).execute()
+                supabase.table("credits").insert({"package_num": pn, "phone": ph, "reason": rs, "trello": tr, "status": "ממתין", "timestamp": now, "request_date": rd.strftime("%d/%m/%Y")}).execute()
                 send_telegram_msg(f"💰 זיכוי חדש! חבילה: {pn}, סיבה: {rs}")
                 st.rerun()
-    for row in cred_res.data:
-        st.write(f" חבילה {row['package_num']} | {row['reason']} | {row['status']}")
 
+    for row in cred_res.data:
+        c_i, c_b = st.columns([4, 1])
+        with c_i: st.write(f" חבילה {row['package_num']} | {row['reason']} | {row['status']}")
+        with c_b:
+            if row['status'] == 'ממתין' and st.button("בוצע ✅", key=f"c_d_{row['id']}"):
+                supabase.table("credits").update({"status": "בוצע"}).eq("id", row['id']).execute()
+                send_telegram_msg(f"✅ זיכוי טופל! חבילה {row['package_num']} בוצעה")
+                st.rerun()
+
+# --- טאב 4: שאלות ---
 with tab4:
     st.header("פניות נציגים")
     with st.form("q_f"):
-        rn = st.text_input("שם הנציג")
-        qt = st.text_area("השאלה")
+        rn, qt = st.text_input("שם הנציג"), st.text_area("השאלה/בקשה")
         if st.form_submit_button("שלח שאלה"):
-            supabase.table("questions").insert({"rep_name": rn, "question": qt, "status": "פתוח"}).execute()
-            send_telegram_msg(f"❓ שאלה מ{rn}: {qt}")
+            now = datetime.now().strftime("%d/%m/%Y %H:%M")
+            supabase.table("questions").insert({"rep_name": rn, "question": qt, "answer": "", "status": "פתוח", "timestamp": now}).execute()
+            send_telegram_msg(f"❓ שאלה חדשה מ{rn}: {qt}")
             st.rerun()
+    
+    q_res = supabase.table("questions").select("*").order("id", desc=True).execute()
+    for row in q_res.data:
+        with st.expander(f"📌 {row['rep_name']}: {row['question'][:30]}..."):
+            st.write(f"שאלה: {row['question']}")
+            ans = st.text_input("תשובה", value=row['answer'], key=f"ans_{row['id']}")
+            if st.button("שלח תשובה", key=f"u_q_{row['id']}"):
+                supabase.table("questions").update({"answer": ans}).eq("id", row['id']).execute()
+                send_telegram_msg(f"💡 תשובה לנציג {row['rep_name']}: {ans}")
+                st.success("התשובה נשלחה!")
+                st.rerun()
