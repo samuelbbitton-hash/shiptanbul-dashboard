@@ -3,6 +3,9 @@ import pandas as pd
 from datetime import datetime
 import requests
 from supabase import create_client, Client
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # ============================================================
 #                    הגדרות עמוד
@@ -19,10 +22,8 @@ st.set_page_config(
 # ============================================================
 st.markdown("""
     <style>
-    /* ייבוא פונט עברי מקצועי */
     @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap');
 
-    /* משתני צבע - לפי הלוגו */
     :root {
         --brand-blue: #1BA3E8;
         --brand-blue-dark: #1487C2;
@@ -36,19 +37,16 @@ st.markdown("""
         --brand-danger: #EF4444;
     }
 
-    /* RTL גלובלי + פונט */
     html, body, [class*="css"], .main, .block-container {
         direction: rtl !important;
         text-align: right !important;
         font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
 
-    /* רקע ראשי */
     .stApp {
         background: linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%);
     }
 
-    /* כותרות */
     h1, h2, h3, h4, h5, h6 {
         direction: rtl !important;
         text-align: right !important;
@@ -66,13 +64,11 @@ st.markdown("""
         padding-bottom: 0.5rem;
     }
 
-    /* פסקאות וטקסטים */
     p, label, div, span {
         direction: rtl;
         text-align: right;
     }
 
-    /* כותרת ראשית - Header עם לוגו */
     .brand-header {
         background: linear-gradient(135deg, var(--brand-black) 0%, #2D2D2D 100%);
         padding: 1.5rem 2rem;
@@ -83,36 +79,6 @@ st.markdown("""
         align-items: center;
         justify-content: space-between;
         flex-direction: row-reverse;
-    }
-
-    .brand-title {
-        color: white !important;
-        margin: 0 !important;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        background: none !important;
-        -webkit-text-fill-color: white !important;
-    }
-
-    .brand-title .ship {
-        color: var(--brand-blue) !important;
-        -webkit-text-fill-color: var(--brand-blue) !important;
-    }
-
-    .brand-title .tanbul {
-        color: white !important;
-        -webkit-text-fill-color: white !important;
-    }
-
-    .brand-badge {
-        background: var(--brand-yellow);
-        color: var(--brand-black);
-        padding: 0.4rem 1rem;
-        border-radius: 30px;
-        font-weight: 700;
-        font-size: 0.85rem;
-        box-shadow: 0 4px 10px rgba(242, 201, 76, 0.4);
     }
 
     .brand-badge-standalone {
@@ -126,7 +92,6 @@ st.markdown("""
         display: inline-block;
     }
 
-    /* כפתורים מעוצבים */
     div.stButton > button {
         width: 100%;
         background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-blue-dark) 100%);
@@ -147,11 +112,6 @@ st.markdown("""
         background: linear-gradient(135deg, var(--brand-blue-dark) 0%, var(--brand-blue) 100%);
     }
 
-    div.stButton > button:active {
-        transform: translateY(0);
-    }
-
-    /* כפתור form_submit */
     div.stFormSubmitButton > button {
         background: linear-gradient(135deg, var(--brand-yellow) 0%, var(--brand-yellow-dark) 100%) !important;
         color: var(--brand-black) !important;
@@ -163,7 +123,6 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(242, 201, 76, 0.5) !important;
     }
 
-    /* Tabs מעוצבים */
     .stTabs [data-baseweb="tab-list"] {
         direction: rtl;
         gap: 0.5rem;
@@ -181,7 +140,6 @@ st.markdown("""
         font-weight: 600;
         font-size: 1rem;
         color: var(--brand-gray);
-        transition: all 0.2s;
         border: none;
     }
 
@@ -196,22 +154,16 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(27, 163, 232, 0.3);
     }
 
-    .stTabs [data-baseweb="tab-highlight"] {
+    .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] {
         display: none;
     }
 
-    .stTabs [data-baseweb="tab-border"] {
-        display: none;
-    }
-
-    /* Expander */
     .stExpander {
         text-align: right;
         border: 1px solid var(--brand-border) !important;
         border-radius: 12px !important;
         background: white !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important;
-        overflow: hidden;
         margin-bottom: 0.75rem;
     }
 
@@ -222,11 +174,6 @@ st.markdown("""
         color: var(--brand-black) !important;
     }
 
-    .stExpander summary:hover {
-        background: var(--brand-light) !important;
-    }
-
-    /* טפסים ושדות קלט */
     [data-testid="stForm"] {
         direction: rtl;
         background: white;
@@ -242,7 +189,6 @@ st.markdown("""
         border-radius: 10px !important;
         border: 1.5px solid var(--brand-border) !important;
         font-family: 'Heebo', sans-serif !important;
-        transition: all 0.2s;
     }
 
     .stTextInput input:focus, .stTextArea textarea:focus {
@@ -256,41 +202,26 @@ st.markdown("""
         font-size: 0.9rem !important;
     }
 
-    /* טבלה */
-    .stTable {
-        direction: rtl;
-    }
-
+    .stTable { direction: rtl; }
     .stTable table {
         border-radius: 12px;
         overflow: hidden;
         box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-        border: none !important;
     }
-
     .stTable thead tr th {
         background: linear-gradient(135deg, var(--brand-black) 0%, #2D2D2D 100%) !important;
         color: white !important;
         font-weight: 700 !important;
         text-align: right !important;
         padding: 1rem !important;
-        font-size: 0.95rem !important;
-        border: none !important;
     }
-
     .stTable tbody tr td {
         text-align: right !important;
         padding: 0.9rem 1rem !important;
         background: white !important;
         border-bottom: 1px solid var(--brand-border) !important;
-        font-size: 0.95rem !important;
     }
 
-    .stTable tbody tr:hover td {
-        background: var(--brand-light) !important;
-    }
-
-    /* הודעת אזהרה - הודעת הנהלה */
     .management-alert {
         background: linear-gradient(135deg, var(--brand-yellow) 0%, var(--brand-yellow-dark) 100%);
         color: var(--brand-black);
@@ -303,34 +234,8 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 0.75rem;
-        font-size: 1rem;
     }
 
-    .management-alert-icon {
-        font-size: 1.5rem;
-    }
-
-    /* Success / Info / Warning / Error */
-    .stAlert {
-        border-radius: 12px !important;
-        border: none !important;
-        font-weight: 500;
-    }
-
-    div[data-baseweb="notification"] {
-        direction: rtl !important;
-        text-align: right !important;
-    }
-
-    /* Divider */
-    hr {
-        border: none;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, var(--brand-border), transparent);
-        margin: 1.5rem 0;
-    }
-
-    /* כרטיסי פריטים (זיכויים / שאלות) */
     .item-card {
         background: white;
         border: 1px solid var(--brand-border);
@@ -338,38 +243,25 @@ st.markdown("""
         padding: 1rem 1.25rem;
         margin-bottom: 0.75rem;
         box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        transition: all 0.2s;
     }
 
-    .item-card:hover {
-        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-        transform: translateY(-1px);
-    }
-
-    /* Status badges */
     .status-pending {
         display: inline-block;
         background: var(--brand-yellow);
         color: var(--brand-black);
         padding: 0.25rem 0.75rem;
         border-radius: 20px;
-        font-size: 0.8rem;
         font-weight: 700;
+        font-size: 0.8rem;
     }
-
     .status-done {
         display: inline-block;
         background: var(--brand-success);
         color: white;
         padding: 0.25rem 0.75rem;
         border-radius: 20px;
-        font-size: 0.8rem;
         font-weight: 700;
-    }
-
-    /* Checkbox */
-    .stCheckbox {
-        direction: rtl;
+        font-size: 0.8rem;
     }
 
     .stCheckbox label {
@@ -378,31 +270,17 @@ st.markdown("""
         gap: 0.5rem;
     }
 
-    /* טקסט מחוק */
     .stMarkdown del {
         color: #94A3B8;
         text-decoration: line-through;
     }
 
-    /* הסתרת כפתור deploy ופוטר Streamlit */
-    [data-testid="stToolbar"] { display: none; }
-    footer { display: none; }
-    #MainMenu { visibility: hidden; }
-
-    /* responsive */
-    @media (max-width: 768px) {
-        .brand-header {
-            padding: 1rem;
-            flex-direction: column-reverse;
-            gap: 1rem;
-        }
-        h1 { font-size: 1.8rem !important; }
-    }
+    [data-testid="stToolbar"], footer, #MainMenu { display: none; }
     </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
-#                    Header עם Branding - לוגו תמונה
+#                    Header
 # ============================================================
 header_col1, header_col2 = st.columns([1, 4])
 with header_col1:
@@ -425,8 +303,15 @@ st.markdown("<hr style='margin-top: 0; margin-bottom: 2rem;'>", unsafe_allow_htm
 MANAGERS = ["אורלי", "שמואל", "סיון"]
 REPS = ["סיון", "אורלי", "דנה", "אלינה", "כסיף", "מעין", "שירה", "נעמי", "גדיר"]
 
+# מילון לשליפת סודות מייל לפי שם מנהל
+MANAGER_KEYS = {
+    "אורלי": "EMAIL_ORLY",
+    "שמואל": "EMAIL_SHMUEL",
+    "סיון": "EMAIL_SIVAN"
+}
+
 # ============================================================
-#                    פונקציות עזר
+#                    פונקציות עזר - תקשורת והתראות
 # ============================================================
 def send_notification(message):
     try:
@@ -438,7 +323,30 @@ def send_notification(message):
     except:
         pass
 
-# התחברות ל-Supabase
+def send_email_notification(subject, body, recipient_email):
+    try:
+        if "SMTP_EMAIL" in st.secrets and "SMTP_PASSWORD" in st.secrets and recipient_email:
+            sender_email = st.secrets["SMTP_EMAIL"]
+            sender_password = st.secrets["SMTP_PASSWORD"]
+
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = recipient_email
+            msg['Subject'] = subject
+
+            msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+            server.quit()
+    except Exception as e:
+        print(f"שגיאה בשליחת מייל: {e}")
+
+# ============================================================
+#                    התחברות ל-Supabase
+# ============================================================
 try:
     url: str = st.secrets["SUPABASE_URL"]
     key: str = st.secrets["SUPABASE_KEY"]
@@ -448,8 +356,7 @@ except:
     st.stop()
 
 # ============================================================
-#       פונקציות טעינה עם Cache לביצועים מהירים
-#       ttl=10 = הנתונים מתעדכנים כל 10 שניות
+#                    פונקציות טעינה עם Cache
 # ============================================================
 @st.cache_data(ttl=10)
 def load_global_message():
@@ -470,12 +377,12 @@ def load_credits():
 def load_questions(rep_filter="הצג הכל"):
     query = supabase.table("questions").select("*")
     if rep_filter != "הצג הכל":
-        query = query.eq("rep_name", rep_filter)
+        # מביא גם את מה שהנציג שלח וגם את מה שנשלח אליו
+        query = query.or_(f"rep_name.eq.{rep_filter},assigned_to.eq.{rep_filter}")
     res = query.order("id", desc=True).execute()
     return res.data if res.data else []
 
 def clear_all_cache():
-    """מנקה את ה-cache אחרי שינוי בנתונים"""
     st.cache_data.clear()
 
 # ============================================================
@@ -501,11 +408,13 @@ with st.expander("⚙️ ערוך הודעת הנהלה"):
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ============================================================
-#                    Tabs ראשיים
+#                    Tabs
 # ============================================================
 tab1, tab2, tab3 = st.tabs(["✈️  עדכוני טיסות", "💰  ניהול זיכויים", "💬  שאלות ובקשות"])
 
-# --- טאב 1: טיסות ---
+# ------------------------------------------------------------
+#                    טאב 1: טיסות
+# ------------------------------------------------------------
 with tab1:
     st.markdown("### ✈️ סטטוס טיסות ויעדים")
     st.caption("ניהול ועדכון תדירות הטיסות לכל היעדים הפעילים")
@@ -514,7 +423,6 @@ with tab1:
     flights_data = load_flights()
     existing_dests = [r['destination'] for r in flights_data]
 
-    # אם חסרים יעדים - הוסף אותם
     missing_dests = [d for d in fixed_destinations if d not in existing_dests]
     if missing_dests:
         for dest in missing_dests:
@@ -553,7 +461,9 @@ with tab1:
                     clear_all_cache()
                     st.rerun()
 
-# --- טאב 2: זיכויים ---
+# ------------------------------------------------------------
+#                    טאב 2: זיכויים
+# ------------------------------------------------------------
 with tab2:
     st.markdown("### 💰 מעקב זיכויים")
     st.caption("ניהול ומעקב אחר בקשות זיכוי מכל המחסנים")
@@ -574,8 +484,11 @@ with tab2:
                     "מחסן דובאי", "אקסלוט", "זיכוי פנימי"
                 ])
                 tr = st.text_input("🔗 קישור טרלו")
+            
             if st.form_submit_button("✅ שלח זיכוי"):
                 now = datetime.now().strftime("%d/%m/%Y %H:%M")
+                
+                # הכנסה למסד נתונים
                 supabase.table("credits").insert({
                     "package_num": pn,
                     "phone": ph,
@@ -586,7 +499,16 @@ with tab2:
                     "request_date": rd.strftime("%d/%m/%Y"),
                     "credited_by": cb
                 }).execute()
-                send_notification(f"💰 זיכוי חדש מ{cb}!\nחבילה: {pn}")
+                
+                # התראות
+                msg_text = f"💰 זיכוי חדש מ{cb}!\nמספר חבילה: {pn}\nסיבה: {rs}\nטלפון: {ph}"
+                send_notification(msg_text)
+                
+                # שליחת מייל לשמואל בלבד
+                shmuel_email = st.secrets.get("EMAIL_SHMUEL")
+                if shmuel_email:
+                    send_email_notification(f"בקשת זיכוי חדשה - חבילה {pn}", msg_text, shmuel_email)
+                
                 clear_all_cache()
                 st.rerun()
 
@@ -618,7 +540,9 @@ with tab2:
     else:
         st.info("📭 אין זיכויים להצגה כרגע")
 
-# --- טאב 3: שאלות ובקשות ---
+# ------------------------------------------------------------
+#                    טאב 3: שאלות ובקשות
+# ------------------------------------------------------------
 with tab3:
     st.markdown("### 💬 מערכת שאלות ופניות")
     st.caption("שלח שאלות למנהלים וצפה בתיבת הפניות האישית")
@@ -635,6 +559,8 @@ with tab3:
 
             if st.form_submit_button("📤 שלח שאלה"):
                 now = datetime.now().strftime("%d/%m/%Y %H:%M")
+                
+                # הכנסה למסד נתונים
                 supabase.table("questions").insert({
                     "rep_name": rep_sender,
                     "assigned_to": assign_to,
@@ -643,7 +569,18 @@ with tab3:
                     "is_done": False,
                     "timestamp": now
                 }).execute()
-                send_notification(f"❓ שאלה חדשה ל{assign_to} מ{rep_sender}:\n{question_text}")
+                
+                # התראות
+                msg_text = f"❓ שאלה חדשה עבור {assign_to} מאת {rep_sender}:\n{question_text}"
+                send_notification(msg_text)
+                
+                # איתור המייל של המנהל שנבחר בטופס (אורלי / שמואל / סיון)
+                target_secret_key = MANAGER_KEYS.get(assign_to)
+                if target_secret_key:
+                    target_email = st.secrets.get(target_secret_key)
+                    if target_email:
+                        send_email_notification(f"פנייה חדשה מאת {rep_sender}", msg_text, target_email)
+
                 clear_all_cache()
                 st.success("✅ השאלה נשלחה בהצלחה!")
                 st.rerun()
